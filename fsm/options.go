@@ -16,3 +16,10 @@ func WithStore[T any](store StateStore) Option[T] {
 		f.store = store
 	}
 }
+
+// WithLogger sets the logger used for transitions and failures.
+func WithLogger[T any](logger Logger) Option[T] {
+	return func(f *FSM[T]) {
+		f.logger = logger
+	}
+}
