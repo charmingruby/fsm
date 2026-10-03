@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+tasks:
+  lint:
+    desc: Runs linter
+    cmds:
+      - go fmt ./...
+      - golangci-lint run ./...
+  lint-fix:
+    desc: Runs linter with auto-fix
+    cmds:
+      - go fmt ./...
+      - golangci-lint run --fix ./...
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./... -race
+  release:
+    desc: "Create and push git tag to trigger release (usage: task tag V=0.1.0)"
+    requires:
+      vars: [V]
+    cmds:
+      - git tag -a v{{.V}} -m "Release v{{.V}}"
+      - git push origin v{{.V}}
+  rename:
+    desc: "Runs on project scaffold to rename the project (usage: task rename -- new-name)"
+    cmds:
+      - |
+        [ -n "{{.CLI_ARGS}}" ] || { echo "Usage: task rename -- <new-name>"; exit 1; }
+        for file in ./* ./.*; do
+          [ -f "$file" ] || continue
+          sed -i.bak "s/rib/{{.CLI_ARGS}}/g" "$file" && rm -f "$file.bak"
+        done
