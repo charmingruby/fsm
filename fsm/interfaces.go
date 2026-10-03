@@ -1,7 +1,7 @@
 package fsm
 
-// StateStorage stores the FSM state.
-type StateStorage interface {
+// StateStore stores the FSM state.
+type StateStore interface {
 	GetState()
 	SetState()
 }

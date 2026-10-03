@@ -10,9 +10,9 @@ func WithMaxHops[T any](n int) Option[T] {
 	}
 }
 
-// WithStorage sets the state storage.
-func WithStorage[T any](stateStorage StateStorage) Option[T] {
+// WithStore sets the state storage.
+func WithStore[T any](store StateStore) Option[T] {
 	return func(f *FSM[T]) {
-		f.stateStorage = stateStorage
+		f.store = store
 	}
 }
