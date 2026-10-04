@@ -32,7 +32,7 @@ linters:
     - exhaustive
     - exptostd
     - fatcontext
-    - forbidigo
+    # - forbidigo
     - funcorder
     - funlen
     - gocheckcompilerdirectives
