@@ -21,6 +21,8 @@ var (
 // State identifies a node in the state machine.
 type State string
 
+const EmptyState State = ""
+
 // StateFunc resolves the next State from an event.
 type StateFunc[T any] func(ctx context.Context, event *T) (State, error)
 
