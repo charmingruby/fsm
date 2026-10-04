@@ -86,15 +86,15 @@ linters:
 
   exclusions:
     rules:
-      - path: '(.+)_test\\.go'
+      - path: '(.+)_test\.go'
         linters:
           - asasalint
           - funlen
-      - path: .*\\.go
+      - path: '.*\.go'
         linters:
           - govet
         text: "shadow: declaration of"
-      - path: '.*/main\\.go$'
+      - path: '.*/main\.go$'
         linters:
           - revive
           - funlen
