@@ -37,7 +37,6 @@ type Transition struct {
 
 // FSM is a generic and type-safe finite state machine.
 type FSM[T any] struct {
-	store     StateStore
 	logger    Logger
 	terminals map[State]bool
 	handlers  map[State]StateFunc[T]
@@ -49,7 +48,6 @@ type FSM[T any] struct {
 // New creates a new instance of a finite state machine.
 func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	fsm := &FSM[T]{
-		store:     newMemStateStore(),
 		logger:    newStdLogger(),
 		maxHops:   defaultMaxHops,
 		initial:   initial,

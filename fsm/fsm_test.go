@@ -22,12 +22,6 @@ func (discardLogger) Infof(string, ...any) {}
 
 func (discardLogger) Errorf(string, ...any) {}
 
-type stubStore struct{}
-
-func (stubStore) GetState() {}
-
-func (stubStore) SetState() {}
-
 func okNext(next fsm.State) fsm.StateFunc[testEvent] {
 	return func(context.Context, *testEvent) (fsm.State, error) {
 		return next, nil
@@ -295,7 +289,6 @@ func TestFSMOptions(t *testing.T) {
 		maxHops      int
 		wantTraceLen int
 		applyMaxHops bool
-		useStubStore bool
 	}{
 		{name: "default hops reaches terminal", wantTraceLen: 1},
 		{name: "custom max hops still reaches terminal", maxHops: 10, applyMaxHops: true, wantTraceLen: 1},
@@ -310,7 +303,6 @@ func TestFSMOptions(t *testing.T) {
 			name:         "custom store does not break trigger",
 			maxHops:      10,
 			applyMaxHops: true,
-			useStubStore: true,
 			wantTraceLen: 1,
 		},
 	}
@@ -322,10 +314,6 @@ func TestFSMOptions(t *testing.T) {
 			opts := []fsm.Option[testEvent]{fsm.WithLogger[testEvent](discardLogger{})}
 			if tt.applyMaxHops {
 				opts = append(opts, fsm.WithMaxHops[testEvent](tt.maxHops))
-			}
-
-			if tt.useStubStore {
-				opts = append(opts, fsm.WithStore[testEvent](stubStore{}))
 			}
 
 			f := fsm.New(s1, opts...)
