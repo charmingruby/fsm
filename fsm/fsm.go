@@ -21,6 +21,7 @@ var (
 // State identifies a node in the state machine.
 type State string
 
+// EmptyState represents an empty or unset state.
 const EmptyState State = ""
 
 // StateFunc resolves the next State from an event.
