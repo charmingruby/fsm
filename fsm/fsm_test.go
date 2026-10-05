@@ -12,7 +12,7 @@ import (
 	"github.com/charmingruby/fsm/fsm"
 )
 
-type testEvent struct {
+type testData struct {
 	happyPath bool
 }
 
@@ -22,13 +22,13 @@ func (discardLogger) Infof(string, ...any) {}
 
 func (discardLogger) Errorf(string, ...any) {}
 
-func okNext(next fsm.State) fsm.StateFunc[testEvent] {
-	return func(context.Context, *testEvent) (fsm.State, error) {
+func okNext(next fsm.State) fsm.StateFunc[testData] {
+	return func(context.Context, *testData) (fsm.State, error) {
 		return next, nil
 	}
 }
 
-func TestFSMTrigger(t *testing.T) {
+func TestFSMRun(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -44,8 +44,8 @@ func TestFSMTrigger(t *testing.T) {
 
 	tests := []struct {
 		wantErr      error
-		build        func(f *fsm.FSM[testEvent])
-		event        *testEvent
+		build        func(f *fsm.FSM[testData])
+		data         *testData
 		ctx          func() context.Context
 		name         string
 		initial      fsm.State
@@ -57,10 +57,10 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "happy path single hop to terminal",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s2)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantFrom: []fsm.State{s1},
 			wantTo:   []fsm.State{s2},
@@ -68,13 +68,13 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "happy path multiple hops to terminal",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
 					On(s2, okNext(s3)).
 					On(s3, okNext(s4)).
 					Terminal(s4)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantFrom: []fsm.State{s1, s2, s3},
 			wantTo:   []fsm.State{s2, s3, s4},
@@ -82,9 +82,9 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "conditional branch happy path",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
-					On(s2, func(_ context.Context, e *testEvent) (fsm.State, error) {
+					On(s2, func(_ context.Context, e *testData) (fsm.State, error) {
 						if !e.happyPath {
 							return fsm.EmptyState, errBoom
 						}
@@ -94,7 +94,7 @@ func TestFSMTrigger(t *testing.T) {
 					On(s3, okNext(s7)).
 					Terminal(s7)
 			},
-			event:    &testEvent{happyPath: true},
+			data:     &testData{happyPath: true},
 			ctx:      context.Background,
 			wantFrom: []fsm.State{s1, s2, s3},
 			wantTo:   []fsm.State{s2, s3, s7},
@@ -102,16 +102,16 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "fallback recovers to terminal",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
-					On(s2, func(context.Context, *testEvent) (fsm.State, error) {
+					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
 					}).
 					OnFail(s2, s6).
 					On(s6, okNext(s7)).
 					Terminal(s7)
 			},
-			event:    &testEvent{happyPath: false},
+			data:     &testData{happyPath: false},
 			ctx:      context.Background,
 			wantFrom: []fsm.State{s1, s2, s6},
 			wantTo:   []fsm.State{s2, fsm.EmptyState, s7},
@@ -119,14 +119,14 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "error without fallback is returned",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
-					On(s2, func(context.Context, *testEvent) (fsm.State, error) {
+					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
 					}).
 					Terminal(s3)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  errBoom,
 			wantFrom: []fsm.State{s1, s2},
@@ -135,20 +135,20 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "no transition registered for initial state",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s2, okNext(s3)).Terminal(s3)
 			},
-			event:   &testEvent{},
+			data:    &testData{},
 			ctx:     context.Background,
 			wantErr: fsm.ErrNoTransition,
 		},
 		{
 			name:    "no transition registered mid chain",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s3)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  fsm.ErrNoTransition,
 			wantFrom: []fsm.State{s1},
@@ -157,14 +157,14 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "fallback to state without handler",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
-				f.On(s1, func(context.Context, *testEvent) (fsm.State, error) {
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, func(context.Context, *testData) (fsm.State, error) {
 					return fsm.EmptyState, errBoom
 				}).
 					OnFail(s1, s6).
 					Terminal(s7)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  fsm.ErrNoTransition,
 			wantFrom: []fsm.State{s1},
@@ -175,10 +175,10 @@ func TestFSMTrigger(t *testing.T) {
 			initial:      s1,
 			maxHops:      3,
 			applyMaxHops: true,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s1)).Terminal(s2)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  fsm.ErrMaxHops,
 			wantFrom: []fsm.State{s1, s1, s1},
@@ -189,13 +189,13 @@ func TestFSMTrigger(t *testing.T) {
 			initial:      s1,
 			maxHops:      2,
 			applyMaxHops: true,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
 					On(s2, okNext(s3)).
 					On(s3, okNext(s4)).
 					Terminal(s4)
 			},
-			event:    &testEvent{},
+			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  fsm.ErrMaxHops,
 			wantFrom: []fsm.State{s1, s2},
@@ -204,10 +204,10 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "context already canceled",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s2)
 			},
-			event: &testEvent{},
+			data: &testData{},
 			ctx: func() context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
 				cancel()
@@ -219,10 +219,10 @@ func TestFSMTrigger(t *testing.T) {
 		{
 			name:    "context deadline exceeded",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s2)
 			},
-			event: &testEvent{},
+			data: &testData{},
 			ctx: func() context.Context {
 				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Hour))
 				cancel()
@@ -242,17 +242,17 @@ func TestFSMTrigger(t *testing.T) {
 				ctx = tt.ctx()
 			}
 
-			opts := []fsm.Option[testEvent]{
-				fsm.WithLogger[testEvent](discardLogger{}),
+			opts := []fsm.Option[testData]{
+				fsm.WithLogger[testData](discardLogger{}),
 			}
 			if tt.applyMaxHops {
-				opts = append(opts, fsm.WithMaxHops[testEvent](tt.maxHops))
+				opts = append(opts, fsm.WithMaxHops[testData](tt.maxHops))
 			}
 
 			f := fsm.New(tt.initial, opts...)
 			tt.build(f)
 
-			trace, err := f.Trigger(ctx, tt.event)
+			trace, err := f.Run(ctx, tt.data)
 
 			if tt.wantErr == nil {
 				require.NoError(t, err)
@@ -291,12 +291,12 @@ func TestFSMHooks(t *testing.T) {
 	tests := []struct {
 		name string
 		// build registers handlers on the already created FSM.
-		build func(f *fsm.FSM[testEvent])
+		build func(f *fsm.FSM[testData])
 		// ctx overrides the test context when non-nil.
 		ctx func() context.Context
 		// initial is the starting state.
 		initial fsm.State
-		// wantErr is the expected Trigger error, if any.
+		// wantErr is the expected Run error, if any.
 		wantErr error
 		// wantEnters is the expected OnEnter state sequence.
 		wantEnters []fsm.State
@@ -311,7 +311,7 @@ func TestFSMHooks(t *testing.T) {
 		{
 			name:    "happy path observes single hop",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			wantEnters: []fsm.State{s1},
@@ -323,7 +323,7 @@ func TestFSMHooks(t *testing.T) {
 		{
 			name:    "happy path observes multiple hops",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
 					On(s2, okNext(s3)).
 					Terminal(s3)
@@ -337,9 +337,9 @@ func TestFSMHooks(t *testing.T) {
 		{
 			name:    "fallback observes enters but only successful transitions",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).
-					On(s2, func(context.Context, *testEvent) (fsm.State, error) {
+					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
 					}).
 					OnFail(s2, s6).
@@ -355,7 +355,7 @@ func TestFSMHooks(t *testing.T) {
 		{
 			name:    "no transition observes enter only",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s2, okNext(s3)).Terminal(s3)
 			},
 			wantErr:    fsm.ErrNoTransition,
@@ -364,7 +364,7 @@ func TestFSMHooks(t *testing.T) {
 		{
 			name:    "canceled context observes nothing",
 			initial: s1,
-			build: func(f *fsm.FSM[testEvent]) {
+			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			ctx: func() context.Context {
@@ -393,22 +393,22 @@ func TestFSMHooks(t *testing.T) {
 			var hops [][2]fsm.State
 
 			f := fsm.New(tt.initial,
-				fsm.WithLogger[testEvent](discardLogger{}),
-				fsm.WithHooks[testEvent](fsm.Hooks[testEvent]{
-					OnEnter: func(_ context.Context, _ *testEvent, state fsm.State) {
+				fsm.WithLogger[testData](discardLogger{}),
+				fsm.WithHooks[testData](fsm.Hooks[testData]{
+					OnEnter: func(_ context.Context, _ *testData, state fsm.State) {
 						enters = append(enters, state)
 					},
-					OnExit: func(_ context.Context, _ *testEvent, from, to fsm.State) {
+					OnExit: func(_ context.Context, _ *testData, from, to fsm.State) {
 						exits = append(exits, [2]fsm.State{from, to})
 					},
-					OnTransition: func(_ context.Context, _ *testEvent, hop fsm.Transition) {
+					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						hops = append(hops, [2]fsm.State{hop.From, hop.To})
 					},
 				}),
 			)
 			tt.build(f)
 
-			trace, err := f.Trigger(ctx, &testEvent{})
+			trace, err := f.Run(ctx, &testData{})
 
 			if tt.wantErr == nil {
 				require.NoError(t, err)
@@ -457,7 +457,7 @@ func TestFSMOptions(t *testing.T) {
 			wantTraceLen: 0,
 		},
 		{
-			name:         "custom store does not break trigger",
+			name:         "custom store does not break Run",
 			maxHops:      10,
 			applyMaxHops: true,
 			wantTraceLen: 1,
@@ -468,15 +468,15 @@ func TestFSMOptions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			opts := []fsm.Option[testEvent]{fsm.WithLogger[testEvent](discardLogger{})}
+			opts := []fsm.Option[testData]{fsm.WithLogger[testData](discardLogger{})}
 			if tt.applyMaxHops {
-				opts = append(opts, fsm.WithMaxHops[testEvent](tt.maxHops))
+				opts = append(opts, fsm.WithMaxHops[testData](tt.maxHops))
 			}
 
 			f := fsm.New(s1, opts...)
 			f.On(s1, okNext(s2)).Terminal(s2)
 
-			trace, err := f.Trigger(t.Context(), &testEvent{})
+			trace, err := f.Run(t.Context(), &testData{})
 
 			if tt.wantErr == nil {
 				require.NoError(t, err)
@@ -499,7 +499,7 @@ func TestFSMBuilderChaining(t *testing.T) {
 		s3 fsm.State = "s3"
 	)
 
-	f := fsm.New[testEvent](s1, fsm.WithLogger[testEvent](discardLogger{}))
+	f := fsm.New[testData](s1, fsm.WithLogger[testData](discardLogger{}))
 
 	require.Same(t, f, f.On(s1, okNext(s2)))
 	require.Same(t, f, f.OnFail(s1, s3))
@@ -507,7 +507,7 @@ func TestFSMBuilderChaining(t *testing.T) {
 
 	f.On(s3, okNext(s2))
 
-	trace, err := f.Trigger(t.Context(), &testEvent{})
+	trace, err := f.Run(t.Context(), &testData{})
 
 	require.NoError(t, err)
 	require.Len(t, trace, 1)

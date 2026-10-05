@@ -88,8 +88,8 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	return f
 }
 
-// Trigger runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
-func (f *FSM[T]) Trigger(ctx context.Context, data *T) ([]Transition, error) {
+// Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
+func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
 	curr := f.initial
 
