@@ -16,3 +16,10 @@ func WithLogger[T any](logger Logger) Option[T] {
 		f.logger = logger
 	}
 }
+
+// WithGlobalHooks sets observer hooks. Hooks never affect Run's result.
+func WithGlobalHooks[T any](hooks GlobalHooks[T]) Option[T] {
+	return func(f *FSM[T]) {
+		f.globalHooks = hooks
+	}
+}
