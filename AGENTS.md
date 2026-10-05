@@ -26,14 +26,13 @@ For focused work you can still use `go test` on a single package and
 ## Working style
 
 1. Read the core package and its tests before changing behavior.
-2. Prefer small, backward-compatible changes. The builder-style API is
-   the public contract: avoid breaking it.
+2. Prefer small changes.
 3. Update the example or docs when behavior changes.
 4. Always finish with `task test` and `task lint`.
 
 ## Tests
 
-Tests are **table-driven with testify**:
+Tests are table-driven:
 
 - Add new behavior as a new table case, not a new test function.
 - Cover happy path, failure path, and edge cases (no transition,
