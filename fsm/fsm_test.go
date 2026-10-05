@@ -275,6 +275,163 @@ func TestFSMTrigger(t *testing.T) {
 	}
 }
 
+func TestFSMHooks(t *testing.T) {
+	t.Parallel()
+
+	const (
+		s1 fsm.State = "s1"
+		s2 fsm.State = "s2"
+		s3 fsm.State = "s3"
+		s6 fsm.State = "s6"
+		s7 fsm.State = "s7"
+	)
+
+	errBoom := errors.New("boom")
+
+	tests := []struct {
+		name string
+		// build registers handlers on the already created FSM.
+		build func(f *fsm.FSM[testEvent])
+		// ctx overrides the test context when non-nil.
+		ctx func() context.Context
+		// initial is the starting state.
+		initial fsm.State
+		// wantErr is the expected Trigger error, if any.
+		wantErr error
+		// wantEnters is the expected OnEnter state sequence.
+		wantEnters []fsm.State
+		// wantExits is the expected OnExit from/to pairs.
+		wantExits [][2]fsm.State
+		// wantHops is the expected OnTransition from/to pairs.
+		wantHops [][2]fsm.State
+		// wantFrom and wantTo describe the expected trace.
+		wantFrom []fsm.State
+		wantTo   []fsm.State
+	}{
+		{
+			name:    "happy path observes single hop",
+			initial: s1,
+			build: func(f *fsm.FSM[testEvent]) {
+				f.On(s1, okNext(s2)).Terminal(s2)
+			},
+			wantEnters: []fsm.State{s1},
+			wantExits:  [][2]fsm.State{{s1, s2}},
+			wantHops:   [][2]fsm.State{{s1, s2}},
+			wantFrom:   []fsm.State{s1},
+			wantTo:     []fsm.State{s2},
+		},
+		{
+			name:    "happy path observes multiple hops",
+			initial: s1,
+			build: func(f *fsm.FSM[testEvent]) {
+				f.On(s1, okNext(s2)).
+					On(s2, okNext(s3)).
+					Terminal(s3)
+			},
+			wantEnters: []fsm.State{s1, s2},
+			wantExits:  [][2]fsm.State{{s1, s2}, {s2, s3}},
+			wantHops:   [][2]fsm.State{{s1, s2}, {s2, s3}},
+			wantFrom:   []fsm.State{s1, s2},
+			wantTo:     []fsm.State{s2, s3},
+		},
+		{
+			name:    "fallback observes enters but only successful transitions",
+			initial: s1,
+			build: func(f *fsm.FSM[testEvent]) {
+				f.On(s1, okNext(s2)).
+					On(s2, func(context.Context, *testEvent) (fsm.State, error) {
+						return fsm.EmptyState, errBoom
+					}).
+					OnFail(s2, s6).
+					On(s6, okNext(s7)).
+					Terminal(s7)
+			},
+			wantEnters: []fsm.State{s1, s2, s6},
+			wantExits:  [][2]fsm.State{{s1, s2}, {s6, s7}},
+			wantHops:   [][2]fsm.State{{s1, s2}, {s6, s7}},
+			wantFrom:   []fsm.State{s1, s2, s6},
+			wantTo:     []fsm.State{s2, fsm.EmptyState, s7},
+		},
+		{
+			name:    "no transition observes enter only",
+			initial: s1,
+			build: func(f *fsm.FSM[testEvent]) {
+				f.On(s2, okNext(s3)).Terminal(s3)
+			},
+			wantErr:    fsm.ErrNoTransition,
+			wantEnters: []fsm.State{s1},
+		},
+		{
+			name:    "canceled context observes nothing",
+			initial: s1,
+			build: func(f *fsm.FSM[testEvent]) {
+				f.On(s1, okNext(s2)).Terminal(s2)
+			},
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				return ctx
+			},
+			wantErr: context.Canceled,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
+			if tt.ctx != nil {
+				ctx = tt.ctx()
+			}
+
+			var enters []fsm.State
+
+			var exits [][2]fsm.State
+
+			var hops [][2]fsm.State
+
+			f := fsm.New(tt.initial,
+				fsm.WithLogger[testEvent](discardLogger{}),
+				fsm.WithHooks[testEvent](fsm.Hooks[testEvent]{
+					OnEnter: func(_ context.Context, _ *testEvent, state fsm.State) {
+						enters = append(enters, state)
+					},
+					OnExit: func(_ context.Context, _ *testEvent, from, to fsm.State) {
+						exits = append(exits, [2]fsm.State{from, to})
+					},
+					OnTransition: func(_ context.Context, _ *testEvent, hop fsm.Transition) {
+						hops = append(hops, [2]fsm.State{hop.From, hop.To})
+					},
+				}),
+			)
+			tt.build(f)
+
+			trace, err := f.Trigger(ctx, &testEvent{})
+
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.ErrorIs(t, err, tt.wantErr)
+			}
+
+			var from, to []fsm.State
+			for _, hop := range trace {
+				from = append(from, hop.From)
+				to = append(to, hop.To)
+			}
+
+			assert.Equal(t, tt.wantFrom, from, "unexpected From chain")
+			assert.Equal(t, tt.wantTo, to, "unexpected To chain")
+			assert.Equal(t, tt.wantEnters, enters, "unexpected OnEnter calls")
+			assert.Equal(t, tt.wantExits, exits, "unexpected OnExit calls")
+			assert.Equal(t, tt.wantHops, hops, "unexpected OnTransition calls")
+		})
+	}
+}
+
 func TestFSMOptions(t *testing.T) {
 	t.Parallel()
 

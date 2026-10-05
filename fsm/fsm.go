@@ -24,8 +24,8 @@ type State string
 // EmptyState represents an empty or unset state.
 const EmptyState State = ""
 
-// StateFunc resolves the next State from an event.
-type StateFunc[T any] func(ctx context.Context, event *T) (State, error)
+// StateFunc resolves the next State from data.
+type StateFunc[T any] func(ctx context.Context, data *T) (State, error)
 
 // Transition describes a single state change.
 type Transition struct {
@@ -38,6 +38,7 @@ type Transition struct {
 // FSM is a generic and type-safe finite state machine.
 type FSM[T any] struct {
 	logger    Logger
+	hooks     Hooks[T]
 	terminals map[State]bool
 	handlers  map[State]StateFunc[T]
 	fallbacks map[State]State
@@ -45,10 +46,11 @@ type FSM[T any] struct {
 	maxHops   int
 }
 
-// New creates a new instance of a finite state machine.
+// New creates an FSM starting at initial.
 func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	fsm := &FSM[T]{
 		logger:    newStdLogger(),
+		hooks:     Hooks[T]{},
 		maxHops:   defaultMaxHops,
 		initial:   initial,
 		terminals: make(map[State]bool),
@@ -86,8 +88,8 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	return f
 }
 
-// Trigger advances the machine with event and returns the applied transitions.
-func (f *FSM[T]) Trigger(ctx context.Context, event *T) ([]Transition, error) {
+// Trigger runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
+func (f *FSM[T]) Trigger(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
 	curr := f.initial
 
@@ -101,6 +103,10 @@ func (f *FSM[T]) Trigger(ctx context.Context, event *T) ([]Transition, error) {
 			return trace, err
 		}
 
+		if f.hooks.OnEnter != nil {
+			f.hooks.OnEnter(ctx, data, curr)
+		}
+
 		stateFn, ok := f.handlers[curr]
 		if !ok {
 			err := fmt.Errorf("%w: %q", ErrNoTransition, curr)
@@ -110,7 +116,7 @@ func (f *FSM[T]) Trigger(ctx context.Context, event *T) ([]Transition, error) {
 		}
 
 		now := time.Now()
-		next, err := stateFn(ctx, event)
+		next, err := stateFn(ctx, data)
 		duration := time.Since(now)
 
 		hop := Transition{
@@ -138,6 +144,14 @@ func (f *FSM[T]) Trigger(ctx context.Context, event *T) ([]Transition, error) {
 		}
 
 		f.logger.Infof("transition: from %q -> %q (%s)", curr, next, duration)
+
+		if f.hooks.OnTransition != nil {
+			f.hooks.OnTransition(ctx, data, hop)
+		}
+
+		if f.hooks.OnExit != nil {
+			f.hooks.OnExit(ctx, data, curr, next)
+		}
 
 		if f.terminals[next] {
 			f.logger.Infof("reached terminal %q after %d hops", next, len(trace))
