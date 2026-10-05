@@ -55,7 +55,7 @@ type FSM[T any] struct {
 // New creates an FSM starting at initial.
 func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	fsm := &FSM[T]{
-		logger:      newStdLogger(),
+		logger:      NewNoopLogger(),
 		globalHooks: GlobalHooks[T]{},
 		maxHops:     defaultMaxHops,
 		initial:     initial,
@@ -99,21 +99,14 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	return f
 }
 
-// fireTransitionHooks observes a successful hop globally, then per-state.
-func (f *FSM[T]) fireTransitionHooks(ctx context.Context, data *T, hop Transition, hooks *StateHooks[T]) {
-	if f.globalHooks.OnTransition != nil {
-		f.globalHooks.OnTransition(ctx, data, hop)
-	}
-
-	if hooks != nil && hooks.OnTransition != nil {
-		hooks.OnTransition(ctx, data, hop)
-	}
-}
-
 // Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
 func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
 	curr := f.initial
+
+	if f.terminals[curr] {
+		return trace, nil
+	}
 
 	f.logger.Infof("run started at %q (maxHops=%d)", f.initial, f.maxHops)
 
@@ -167,7 +160,13 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 
 		f.logger.Infof("transition: from %q -> %q (%s)", curr, next, duration)
 
-		f.fireTransitionHooks(ctx, data, hop, state.hooks)
+		if f.globalHooks.OnTransition != nil {
+			f.globalHooks.OnTransition(ctx, data, hop)
+		}
+
+		if state.hooks != nil && state.hooks.OnTransition != nil {
+			state.hooks.OnTransition(ctx, data, hop)
+		}
 
 		if f.globalHooks.OnExit != nil {
 			f.globalHooks.OnExit(ctx, data, curr, next)

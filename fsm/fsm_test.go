@@ -55,6 +55,40 @@ func TestFSMRun(t *testing.T) {
 		applyMaxHops bool
 	}{
 		{
+			name:    "initial state is terminal returns empty trace",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.Terminal(s1)
+			},
+			data: &testData{},
+			ctx:  context.Background,
+		},
+		{
+			name:    "initial terminal skips registered handler",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, func(context.Context, *testData) (fsm.State, error) {
+					return fsm.EmptyState, errBoom
+				}, nil).Terminal(s1)
+			},
+			data: &testData{},
+			ctx:  context.Background,
+		},
+		{
+			name:    "initial terminal wins over canceled context",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.Terminal(s1)
+			},
+			data: &testData{},
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+
+				return ctx
+			},
+		},
+		{
 			name:    "happy path single hop to terminal",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
@@ -309,6 +343,13 @@ func TestFSMHooks(t *testing.T) {
 		wantTo   []fsm.State
 	}{
 		{
+			name:    "initial terminal observes nothing",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2), nil).Terminal(s1)
+			},
+		},
+		{
 			name:    "happy path observes single hop",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
@@ -461,6 +502,17 @@ func TestFSMStateHooks(t *testing.T) {
 		wantFrom []fsm.State
 		wantTo   []fsm.State
 	}{
+		{
+			name:    "initial terminal fires nothing",
+			initial: s1,
+			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
+				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
+						record("state s1", hop)
+					},
+				}).Terminal(s1)
+			},
+		},
 		{
 			name:    "state hook fires on single hop after global",
 			initial: s1,
