@@ -27,6 +27,12 @@ const EmptyState State = ""
 // StateFunc resolves the next State from data.
 type StateFunc[T any] func(ctx context.Context, data *T) (State, error)
 
+type state[T any] struct {
+	handler StateFunc[T]
+	hooks   *StateHooks[T]
+	key     State
+}
+
 // Transition describes a single state change.
 type Transition struct {
 	Err      error
@@ -37,25 +43,25 @@ type Transition struct {
 
 // FSM is a generic and type-safe finite state machine.
 type FSM[T any] struct {
-	logger    Logger
-	hooks     Hooks[T]
-	terminals map[State]bool
-	handlers  map[State]StateFunc[T]
-	fallbacks map[State]State
-	initial   State
-	maxHops   int
+	logger      Logger
+	globalHooks GlobalHooks[T]
+	terminals   map[State]bool
+	states      map[State]state[T]
+	fallbacks   map[State]State
+	initial     State
+	maxHops     int
 }
 
 // New creates an FSM starting at initial.
 func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	fsm := &FSM[T]{
-		logger:    newStdLogger(),
-		hooks:     Hooks[T]{},
-		maxHops:   defaultMaxHops,
-		initial:   initial,
-		terminals: make(map[State]bool),
-		handlers:  make(map[State]StateFunc[T]),
-		fallbacks: make(map[State]State),
+		logger:      newStdLogger(),
+		globalHooks: GlobalHooks[T]{},
+		maxHops:     defaultMaxHops,
+		initial:     initial,
+		terminals:   make(map[State]bool),
+		states:      make(map[State]state[T]),
+		fallbacks:   make(map[State]State),
 	}
 
 	for _, opt := range opts {
@@ -65,9 +71,14 @@ func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	return fsm
 }
 
-// On registers fn for state and returns f for chaining.
-func (f *FSM[T]) On(state State, fn StateFunc[T]) *FSM[T] {
-	f.handlers[state] = fn
+// On registers fn for state with optional per-state hooks and returns f for chaining.
+// A nil hooks is valid and disables per-state observation for that state.
+func (f *FSM[T]) On(stateName State, fn StateFunc[T], hooks *StateHooks[T]) *FSM[T] {
+	f.states[stateName] = state[T]{
+		handler: fn,
+		hooks:   hooks,
+		key:     stateName,
+	}
 
 	return f
 }
@@ -88,12 +99,23 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	return f
 }
 
+// fireTransitionHooks observes a successful hop globally, then per-state.
+func (f *FSM[T]) fireTransitionHooks(ctx context.Context, data *T, hop Transition, hooks *StateHooks[T]) {
+	if f.globalHooks.OnTransition != nil {
+		f.globalHooks.OnTransition(ctx, data, hop)
+	}
+
+	if hooks != nil && hooks.OnTransition != nil {
+		hooks.OnTransition(ctx, data, hop)
+	}
+}
+
 // Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
 func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
 	curr := f.initial
 
-	f.logger.Infof("trigger started at %q (maxHops=%d)", f.initial, f.maxHops)
+	f.logger.Infof("run started at %q (maxHops=%d)", f.initial, f.maxHops)
 
 	for range f.maxHops {
 		if ctx.Err() != nil {
@@ -103,11 +125,11 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 			return trace, err
 		}
 
-		if f.hooks.OnEnter != nil {
-			f.hooks.OnEnter(ctx, data, curr)
+		if f.globalHooks.OnEnter != nil {
+			f.globalHooks.OnEnter(ctx, data, curr)
 		}
 
-		stateFn, ok := f.handlers[curr]
+		state, ok := f.states[curr]
 		if !ok {
 			err := fmt.Errorf("%w: %q", ErrNoTransition, curr)
 			f.logger.Errorf("%v", err)
@@ -116,7 +138,7 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 		}
 
 		now := time.Now()
-		next, err := stateFn(ctx, data)
+		next, err := state.handler(ctx, data)
 		duration := time.Since(now)
 
 		hop := Transition{
@@ -145,12 +167,10 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 
 		f.logger.Infof("transition: from %q -> %q (%s)", curr, next, duration)
 
-		if f.hooks.OnTransition != nil {
-			f.hooks.OnTransition(ctx, data, hop)
-		}
+		f.fireTransitionHooks(ctx, data, hop, state.hooks)
 
-		if f.hooks.OnExit != nil {
-			f.hooks.OnExit(ctx, data, curr, next)
+		if f.globalHooks.OnExit != nil {
+			f.globalHooks.OnExit(ctx, data, curr, next)
 		}
 
 		if f.terminals[next] {

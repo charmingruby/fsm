@@ -1,4 +1,4 @@
-module github.com/charmingruby/fsm/examples/basic-pipeline
+module github.com/charmingruby/fsm/examples/pipeline-with-hooks
 
 go 1.27.0
 
