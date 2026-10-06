@@ -109,8 +109,6 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 			return trace, err
 		}
 
-		f.triggerOnEnterHooks(ctx, data, currStateKey)
-
 		currState, ok := f.states[currStateKey]
 		if !ok {
 			err := fmt.Errorf("%w: %q", ErrNoTransition, currStateKey)
@@ -118,6 +116,8 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 
 			return trace, err
 		}
+
+		f.triggerOnEnterHooks(ctx, data, currState)
 
 		hop := f.exec(ctx, data, currState)
 
@@ -185,9 +185,15 @@ func (f *FSM[T]) resolveFallback(hop *Transition, currState state[T]) (State, er
 	return fallbackStateKey, nil
 }
 
-func (f *FSM[T]) triggerOnEnterHooks(ctx context.Context, data *T, currState State) {
+func (f *FSM[T]) triggerOnEnterHooks(ctx context.Context, data *T, currState state[T]) {
 	if f.globalHooks.OnEnter != nil {
-		f.globalHooks.OnEnter(ctx, data, currState)
+		f.globalHooks.OnEnter(ctx, data, currState.key)
+	}
+
+	for _, hk := range currState.hooks {
+		if hk.OnEnter != nil {
+			hk.OnEnter(ctx, data, currState.key)
+		}
 	}
 }
 

@@ -13,16 +13,13 @@ type OnTransitionHook[T any] func(ctx context.Context, data *T, hop Transition)
 
 // GlobalHooks observes every state transition without affecting execution.
 type GlobalHooks[T any] struct {
-	// OnEnter runs before each handler with the current state.
-	OnEnter OnEnterHook[T]
-	// OnExit runs after a successful transition.
-	OnExit OnExitHook[T]
-	// OnTransition runs after a successful transition with its hop.
+	OnEnter      OnEnterHook[T]
+	OnExit       OnExitHook[T]
 	OnTransition OnTransitionHook[T]
 }
 
 // StateHooks observes transitions of a single state without affecting execution.
 type StateHooks[T any] struct {
-	// OnTransition runs after a successful transition out of the attached state.
+	OnEnter      OnEnterHook[T]
 	OnTransition OnTransitionHook[T]
 }
