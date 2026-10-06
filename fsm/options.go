@@ -1,13 +1,14 @@
 package fsm
 
-// Option configures an FSM.
+// Option configures an FSM. Options apply during New and must not be used
+// after the machine is shared.
 type Option[T any] func(*FSM[T])
 
-// WithMaxHops sets the maximum number of hops.
+// WithMaxHops sets the maximum number of hops per Run.
+// The default is 48. A non-positive value is rejected by Validate.
 func WithMaxHops[T any](n int) Option[T] {
 	return func(f *FSM[T]) {
 		f.maxHops = n
-		f.invalidate()
 	}
 }
 
@@ -21,7 +22,8 @@ func WithLogger[T any](logger Logger) Option[T] {
 	}
 }
 
-// WithGlobalHooks sets observer hooks. Hooks never affect Run's result.
+// WithGlobalHooks sets observer hooks for every state.
+// Hooks only observe; they never affect Run's result.
 func WithGlobalHooks[T any](hooks GlobalHooks[T]) Option[T] {
 	return func(f *FSM[T]) {
 		f.globalHooks = hooks
