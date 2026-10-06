@@ -7,7 +7,6 @@ type Option[T any] func(*FSM[T])
 func WithMaxHops[T any](n int) Option[T] {
 	return func(f *FSM[T]) {
 		f.maxHops = n
-		f.invalidate()
 	}
 }
 

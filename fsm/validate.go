@@ -5,38 +5,19 @@ import (
 	"fmt"
 )
 
-// Validate checks the machine configuration without running it.
-// A misconfigured machine returns an error matching ErrInvalidFSM
-// joined with the specific causes.
+// Validate checks the machine configuration without running it and must be
+// called once after construction is finished and before any Run.
+// A misconfigured machine returns an error joining the specific causes.
+// Any further registration requires a new Validate before the next Run.
 //
-// Prefer validating once before running the workflow: the result is
-// cached, so repeated Runs reuse it instead of revalidating every
-// time. Any registration (On, OnFail, Terminal, WithMaxHops)
-// invalidates the cache, and Run validates lazily when no cached
-// result exists.
+// Validate performs no writes and is safe for concurrent use with other
+// Validate and Run calls.
 func (f *FSM[T]) Validate() error {
-	f.validated = true
-
-	err := errors.Join(
+	return errors.Join(
 		f.validateConfig(),
 		f.validateStates(),
 		f.validateFallbacks(),
 	)
-	if err == nil {
-		f.validationErr = nil
-
-		return nil
-	}
-
-	f.validationErr = fmt.Errorf("%w: %w", ErrInvalidFSM, err)
-
-	return f.validationErr
-}
-
-// invalidate drops a previous validation result after registration changes.
-func (f *FSM[T]) invalidate() {
-	f.validated = false
-	f.validationErr = nil
 }
 
 func (f *FSM[T]) validateConfig() error {

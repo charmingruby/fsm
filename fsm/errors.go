@@ -21,6 +21,4 @@ var (
 	ErrInvalidFallback = errors.New("invalid fallback")
 	// ErrNoTerminal is returned when no terminal state is declared.
 	ErrNoTerminal = errors.New("no terminal state declared")
-	// ErrInvalidFSM is returned when the machine configuration is invalid.
-	ErrInvalidFSM = errors.New("fsm is not valid")
 )
