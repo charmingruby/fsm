@@ -18,7 +18,7 @@ tasks:
     cmds:
       - go test ./... -race
   release:
-    desc: "Create and push git tag to trigger release (usage: task tag V=0.1.0)"
+    desc: "Create and push git tag to trigger release (usage: task tag V=0.1.0) (remember to run after feature branch merge)"
     requires:
       vars: [V]
     cmds:
