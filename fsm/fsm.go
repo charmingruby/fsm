@@ -14,6 +14,8 @@ const (
 var (
 	// ErrNoTransition is returned when no handler is registered for the current state.
 	ErrNoTransition = errors.New("no transition registered for state")
+	// ErrNoFallback is returned when a state fails and no fallback is registered for it.
+	ErrNoFallback = errors.New("no fallback registered for state")
 	// ErrMaxHops is returned when the machine exceeds the configured hop limit.
 	ErrMaxHops = errors.New("max hops exceeded")
 )
@@ -35,10 +37,12 @@ type state[T any] struct {
 
 // Transition describes a single state change.
 type Transition struct {
-	Err      error
-	From     State
-	To       State
-	Duration time.Duration
+	Err  error
+	From State
+	To   State
+	// FallbackUsed is set when From failed and execution continued at another state.
+	FallbackUsed State
+	Duration     time.Duration
 }
 
 // FSM is a generic and type-safe finite state machine.
@@ -102,9 +106,9 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 // Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
 func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
-	curr := f.initial
+	currStateKey := f.initial
 
-	if f.terminals[curr] {
+	if f.terminals[currStateKey] {
 		return trace, nil
 	}
 
@@ -112,73 +116,56 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 
 	for range f.maxHops {
 		if ctx.Err() != nil {
-			err := fmt.Errorf("context canceled at %q: %w", curr, ctx.Err())
+			err := fmt.Errorf("context canceled at %q: %w", currStateKey, ctx.Err())
 			f.logger.Errorf("%v", err)
 
 			return trace, err
 		}
 
-		if f.globalHooks.OnEnter != nil {
-			f.globalHooks.OnEnter(ctx, data, curr)
-		}
+		f.triggerOnEnterHooks(ctx, data, currStateKey)
 
-		state, ok := f.states[curr]
+		currState, ok := f.states[currStateKey]
 		if !ok {
-			err := fmt.Errorf("%w: %q", ErrNoTransition, curr)
+			err := fmt.Errorf("%w: %q", ErrNoTransition, currStateKey)
 			f.logger.Errorf("%v", err)
 
 			return trace, err
 		}
 
-		now := time.Now()
-		next, err := state.handler(ctx, data)
-		duration := time.Since(now)
-
-		hop := Transition{
-			From:     curr,
-			To:       next,
-			Duration: duration,
-			Err:      err,
-		}
+		hop := f.exec(ctx, data, currState)
 
 		trace = append(trace, hop)
 
-		if err != nil {
-			fallback, hasFallback := f.fallbacks[curr]
-			if !hasFallback {
-				err = fmt.Errorf("state %q: %w", curr, err)
+		if hop.Err != nil {
+			fallbackStateKey, err := f.resolveFallback(&hop, currState)
+			if err != nil {
+				err := fmt.Errorf("state %q failed: %w", currState.key, err)
 				f.logger.Errorf("%v", err)
 
 				return trace, err
 			}
 
-			f.logger.Errorf("state %q failed: %v, falling back to %q", curr, err, fallback)
-			curr = fallback
+			f.logger.Errorf("state %q failed: %v, falling back to %q", currState.key, hop.Err, fallbackStateKey)
+
+			trace[len(trace)-1] = hop
+			currStateKey = fallbackStateKey
 
 			continue
 		}
 
-		f.logger.Infof("transition: from %q -> %q (%s)", curr, next, duration)
+		f.triggerOnTransitionHooks(ctx, data, currState, hop)
 
-		if f.globalHooks.OnTransition != nil {
-			f.globalHooks.OnTransition(ctx, data, hop)
-		}
+		f.logger.Infof("transition: from %q -> %q (%s)", currStateKey, hop.To, hop.Duration)
 
-		if state.hooks != nil && state.hooks.OnTransition != nil {
-			state.hooks.OnTransition(ctx, data, hop)
-		}
+		f.triggerOnExitHooks(ctx, data, hop)
 
-		if f.globalHooks.OnExit != nil {
-			f.globalHooks.OnExit(ctx, data, curr, next)
-		}
-
-		if f.terminals[next] {
-			f.logger.Infof("reached terminal %q after %d hops", next, len(trace))
+		if f.terminals[hop.To] {
+			f.logger.Infof("reached terminal %q after %d hops", hop.To, len(trace))
 
 			return trace, nil
 		}
 
-		curr = next
+		currStateKey = hop.To
 	}
 
 	err := fmt.Errorf("%w: exceeded %d hops starting at %q", ErrMaxHops, f.maxHops, f.initial)
@@ -186,4 +173,50 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	f.logger.Errorf("%v", err)
 
 	return trace, err
+}
+
+func (f *FSM[T]) exec(ctx context.Context, data *T, currState state[T]) Transition {
+	now := time.Now()
+	next, err := currState.handler(ctx, data)
+	duration := time.Since(now)
+
+	return Transition{
+		From:     currState.key,
+		To:       next,
+		Duration: duration,
+		Err:      err,
+	}
+}
+
+func (f *FSM[T]) resolveFallback(hop *Transition, currState state[T]) (State, error) {
+	fallbackStateKey, hasFallback := f.fallbacks[currState.key]
+	if !hasFallback {
+		return EmptyState, fmt.Errorf("%w: %w", ErrNoFallback, hop.Err)
+	}
+
+	hop.FallbackUsed = fallbackStateKey
+
+	return fallbackStateKey, nil
+}
+
+func (f *FSM[T]) triggerOnEnterHooks(ctx context.Context, data *T, currState State) {
+	if f.globalHooks.OnEnter != nil {
+		f.globalHooks.OnEnter(ctx, data, currState)
+	}
+}
+
+func (f *FSM[T]) triggerOnExitHooks(ctx context.Context, data *T, hop Transition) {
+	if f.globalHooks.OnExit != nil {
+		f.globalHooks.OnExit(ctx, data, hop.From, hop.To)
+	}
+}
+
+func (f *FSM[T]) triggerOnTransitionHooks(ctx context.Context, data *T, currState state[T], hop Transition) {
+	if f.globalHooks.OnTransition != nil {
+		f.globalHooks.OnTransition(ctx, data, hop)
+	}
+
+	if currState.hooks != nil && currState.hooks.OnTransition != nil {
+		currState.hooks.OnTransition(ctx, data, hop)
+	}
 }

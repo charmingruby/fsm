@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 
 	"github.com/charmingruby/fsm/fsm"
@@ -17,16 +19,22 @@ const (
 	s7 fsm.State = "s7"
 )
 
-type data struct{}
+type data struct {
+	failS2 bool
+}
 
 func main() {
-	f := fsm.New(s1, fsm.WithMaxHops[data](64))
+	f := fsm.New(s1, fsm.WithMaxHops[data](64), fsm.WithLogger[data](fsm.NewStdLogger()))
 
 	f.
 		On(s1, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s2, nil
 		}, nil).
 		On(s2, func(ctx context.Context, data *data) (fsm.State, error) {
+			if data.failS2 {
+				return fsm.EmptyState, errors.New("s2 exploded")
+			}
+
 			return s3, nil
 		}, nil).
 		OnFail(s2, s6).
@@ -44,7 +52,16 @@ func main() {
 		}, nil).
 		Terminal(s7)
 
-	_, err := f.Run(context.TODO(), &data{})
+	fmt.Println("Run on happy path")
+	_, err := f.Run(context.TODO(), &data{failS2: false})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	println()
+
+	fmt.Println("Run with fallback")
+	_, err = f.Run(context.TODO(), &data{failS2: true})
 	if err != nil {
 		log.Fatal(err)
 	}

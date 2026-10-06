@@ -90,6 +90,7 @@ linters:
         linters:
           - asasalint
           - funlen
+          - gocognit
       - path: '.*\.go'
         linters:
           - govet

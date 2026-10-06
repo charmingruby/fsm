@@ -24,6 +24,7 @@ func main() {
 	f := fsm.New(
 		s1,
 		fsm.WithMaxHops[data](64),
+		fsm.WithLogger[data](fsm.NewStdLogger()),
 		fsm.WithGlobalHooks(fsm.GlobalHooks[data]{
 			OnEnter: func(ctx context.Context, data *data, state fsm.State) {
 				fmt.Printf("[GLOBAL ON ENTER HOOK] data: %+v\n", data)

@@ -44,6 +44,7 @@ func TestFSMRun(t *testing.T) {
 
 	tests := []struct {
 		wantErr      error
+		wantErrs     []error
 		build        func(f *fsm.FSM[testData])
 		data         *testData
 		ctx          func() context.Context
@@ -51,6 +52,7 @@ func TestFSMRun(t *testing.T) {
 		initial      fsm.State
 		wantFrom     []fsm.State
 		wantTo       []fsm.State
+		wantFallback []fsm.State
 		maxHops      int
 		applyMaxHops bool
 	}{
@@ -149,6 +151,11 @@ func TestFSMRun(t *testing.T) {
 			ctx:      context.Background,
 			wantFrom: []fsm.State{s1, s2, s6},
 			wantTo:   []fsm.State{s2, fsm.EmptyState, s7},
+			wantFallback: []fsm.State{
+				fsm.EmptyState,
+				s6,
+				fsm.EmptyState,
+			},
 		},
 		{
 			name:    "error without fallback is returned",
@@ -163,8 +170,13 @@ func TestFSMRun(t *testing.T) {
 			data:     &testData{},
 			ctx:      context.Background,
 			wantErr:  errBoom,
+			wantErrs: []error{fsm.ErrNoFallback},
 			wantFrom: []fsm.State{s1, s2},
 			wantTo:   []fsm.State{s2, fsm.EmptyState},
+			wantFallback: []fsm.State{
+				fsm.EmptyState,
+				fsm.EmptyState,
+			},
 		},
 		{
 			name:    "no transition registered for initial state",
@@ -203,6 +215,9 @@ func TestFSMRun(t *testing.T) {
 			wantErr:  fsm.ErrNoTransition,
 			wantFrom: []fsm.State{s1},
 			wantTo:   []fsm.State{fsm.EmptyState},
+			wantFallback: []fsm.State{
+				s6,
+			},
 		},
 		{
 			name:         "max hops exceeded on self loop",
@@ -293,18 +308,28 @@ func TestFSMRun(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				require.ErrorIs(t, err, tt.wantErr)
+
+				for _, want := range tt.wantErrs {
+					require.ErrorIs(t, err, want)
+				}
 			}
 
 			require.Len(t, trace, len(tt.wantTo), "unexpected trace: %+v", trace)
 
-			var from, to []fsm.State
+			var from, to, fallback []fsm.State
+
 			for _, hop := range trace {
 				from = append(from, hop.From)
 				to = append(to, hop.To)
+				fallback = append(fallback, hop.FallbackUsed)
 			}
 
 			assert.Equal(t, tt.wantFrom, from, "unexpected From chain")
 			assert.Equal(t, tt.wantTo, to, "unexpected To chain")
+
+			if tt.wantFallback != nil {
+				assert.Equal(t, tt.wantFallback, fallback, "unexpected FallbackUsed chain")
+			}
 		})
 	}
 }
