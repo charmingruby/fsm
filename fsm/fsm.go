@@ -2,7 +2,6 @@ package fsm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -11,49 +10,17 @@ const (
 	defaultMaxHops = 48
 )
 
-var (
-	// ErrNoTransition is returned when no handler is registered for the current state.
-	ErrNoTransition = errors.New("no transition registered for state")
-	// ErrNoFallback is returned when a state fails and no fallback is registered for it.
-	ErrNoFallback = errors.New("no fallback registered for state")
-	// ErrMaxHops is returned when the machine exceeds the configured hop limit.
-	ErrMaxHops = errors.New("max hops exceeded")
-)
-
-// State identifies a node in the state machine.
-type State string
-
-// EmptyState represents an empty or unset state.
-const EmptyState State = ""
-
-// StateFunc resolves the next State from data.
-type StateFunc[T any] func(ctx context.Context, data *T) (State, error)
-
-type state[T any] struct {
-	handler StateFunc[T]
-	hooks   *StateHooks[T]
-	key     State
-}
-
-// Transition describes a single state change.
-type Transition struct {
-	Err  error
-	From State
-	To   State
-	// FallbackUsed is set when From failed and execution continued at another state.
-	FallbackUsed State
-	Duration     time.Duration
-}
-
 // FSM is a generic and type-safe finite state machine.
 type FSM[T any] struct {
-	logger      Logger
-	globalHooks GlobalHooks[T]
-	terminals   map[State]bool
-	states      map[State]state[T]
-	fallbacks   map[State]State
-	initial     State
-	maxHops     int
+	globalHooks   GlobalHooks[T]
+	logger        Logger
+	validationErr error
+	terminals     map[State]bool
+	states        map[State]state[T]
+	fallbacks     map[State]State
+	initial       State
+	maxHops       int
+	validated     bool
 }
 
 // New creates an FSM starting at initial.
@@ -76,37 +43,57 @@ func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 }
 
 // On registers fn for state with optional per-state hooks and returns f for chaining.
-// A nil hooks is valid and disables per-state observation for that state.
-func (f *FSM[T]) On(stateName State, fn StateFunc[T], hooks *StateHooks[T]) *FSM[T] {
+// Invalid registrations (empty name, nil handler) are reported by Validate, not here.
+func (f *FSM[T]) On(stateName State, fn StateFunc[T], hooks ...StateHooks[T]) *FSM[T] {
 	f.states[stateName] = state[T]{
 		handler: fn,
 		hooks:   hooks,
 		key:     stateName,
 	}
 
+	f.invalidate()
+
 	return f
 }
 
 // OnFail sets fallback for state when its StateFunc fails and returns f for chaining.
+// Invalid mappings (empty states, self fallback, unknown states) are reported by Validate.
 func (f *FSM[T]) OnFail(state State, fallback State) *FSM[T] {
 	f.fallbacks[state] = fallback
+
+	f.invalidate()
 
 	return f
 }
 
 // Terminal marks states as terminal and returns f for chaining.
+// An empty state name is reported by Validate.
 func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
-	for _, state := range states {
-		f.terminals[state] = true
+	for _, s := range states {
+		f.terminals[s] = true
 	}
+
+	f.invalidate()
 
 	return f
 }
 
 // Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
+// Run validates first, reusing a cached Validate result when present, and returns
+// the validation error with an empty trace for a misconfigured machine.
 func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)
 	currStateKey := f.initial
+
+	if !f.validated {
+		if err := f.Validate(); err != nil {
+			return trace, err
+		}
+	}
+
+	if f.validationErr != nil {
+		return trace, f.validationErr
+	}
 
 	if f.terminals[currStateKey] {
 		return trace, nil
@@ -178,12 +165,11 @@ func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 func (f *FSM[T]) exec(ctx context.Context, data *T, currState state[T]) Transition {
 	now := time.Now()
 	next, err := currState.handler(ctx, data)
-	duration := time.Since(now)
 
 	return Transition{
 		From:     currState.key,
 		To:       next,
-		Duration: duration,
+		Duration: time.Since(now),
 		Err:      err,
 	}
 }
@@ -216,7 +202,9 @@ func (f *FSM[T]) triggerOnTransitionHooks(ctx context.Context, data *T, currStat
 		f.globalHooks.OnTransition(ctx, data, hop)
 	}
 
-	if currState.hooks != nil && currState.hooks.OnTransition != nil {
-		currState.hooks.OnTransition(ctx, data, hop)
+	for _, hk := range currState.hooks {
+		if hk.OnTransition != nil {
+			hk.OnTransition(ctx, data, hop)
+		}
 	}
 }

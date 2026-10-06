@@ -71,7 +71,7 @@ func TestFSMRun(t *testing.T) {
 			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, func(context.Context, *testData) (fsm.State, error) {
 					return fsm.EmptyState, errBoom
-				}, nil).Terminal(s1)
+				}).Terminal(s1)
 			},
 			data: &testData{},
 			ctx:  context.Background,
@@ -94,7 +94,7 @@ func TestFSMRun(t *testing.T) {
 			name:    "happy path single hop to terminal",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s2)
+				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			data:     &testData{},
 			ctx:      context.Background,
@@ -105,9 +105,9 @@ func TestFSMRun(t *testing.T) {
 			name:    "happy path multiple hops to terminal",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
-					On(s2, okNext(s3), nil).
-					On(s3, okNext(s4), nil).
+				f.On(s1, okNext(s2)).
+					On(s2, okNext(s3)).
+					On(s3, okNext(s4)).
 					Terminal(s4)
 			},
 			data:     &testData{},
@@ -119,15 +119,15 @@ func TestFSMRun(t *testing.T) {
 			name:    "conditional branch happy path",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
+				f.On(s1, okNext(s2)).
 					On(s2, func(_ context.Context, e *testData) (fsm.State, error) {
 						if !e.happyPath {
 							return fsm.EmptyState, errBoom
 						}
 
 						return s3, nil
-					}, nil).
-					On(s3, okNext(s7), nil).
+					}).
+					On(s3, okNext(s7)).
 					Terminal(s7)
 			},
 			data:     &testData{happyPath: true},
@@ -139,12 +139,12 @@ func TestFSMRun(t *testing.T) {
 			name:    "fallback recovers to terminal",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
+				f.On(s1, okNext(s2)).
 					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
-					}, nil).
+					}).
 					OnFail(s2, s6).
-					On(s6, okNext(s7), nil).
+					On(s6, okNext(s7)).
 					Terminal(s7)
 			},
 			data:     &testData{happyPath: false},
@@ -161,10 +161,10 @@ func TestFSMRun(t *testing.T) {
 			name:    "error without fallback is returned",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
+				f.On(s1, okNext(s2)).
 					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
-					}, nil).
+					}).
 					Terminal(s3)
 			},
 			data:     &testData{},
@@ -182,7 +182,7 @@ func TestFSMRun(t *testing.T) {
 			name:    "no transition registered for initial state",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s2, okNext(s3), nil).Terminal(s3)
+				f.On(s2, okNext(s3)).Terminal(s3)
 			},
 			data:    &testData{},
 			ctx:     context.Background,
@@ -192,7 +192,7 @@ func TestFSMRun(t *testing.T) {
 			name:    "no transition registered mid chain",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s3)
+				f.On(s1, okNext(s2)).Terminal(s3)
 			},
 			data:     &testData{},
 			ctx:      context.Background,
@@ -201,23 +201,18 @@ func TestFSMRun(t *testing.T) {
 			wantTo:   []fsm.State{s2},
 		},
 		{
-			name:    "fallback to state without handler",
+			name:    "fallback to state without handler fails validation",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
 				f.On(s1, func(context.Context, *testData) (fsm.State, error) {
 					return fsm.EmptyState, errBoom
-				}, nil).
+				}).
 					OnFail(s1, s6).
 					Terminal(s7)
 			},
-			data:     &testData{},
-			ctx:      context.Background,
-			wantErr:  fsm.ErrNoTransition,
-			wantFrom: []fsm.State{s1},
-			wantTo:   []fsm.State{fsm.EmptyState},
-			wantFallback: []fsm.State{
-				s6,
-			},
+			data:    &testData{},
+			ctx:     context.Background,
+			wantErr: fsm.ErrNoTransition,
 		},
 		{
 			name:         "max hops exceeded on self loop",
@@ -225,7 +220,7 @@ func TestFSMRun(t *testing.T) {
 			maxHops:      3,
 			applyMaxHops: true,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s1), nil).Terminal(s2)
+				f.On(s1, okNext(s1)).Terminal(s2)
 			},
 			data:     &testData{},
 			ctx:      context.Background,
@@ -239,9 +234,9 @@ func TestFSMRun(t *testing.T) {
 			maxHops:      2,
 			applyMaxHops: true,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
-					On(s2, okNext(s3), nil).
-					On(s3, okNext(s4), nil).
+				f.On(s1, okNext(s2)).
+					On(s2, okNext(s3)).
+					On(s3, okNext(s4)).
 					Terminal(s4)
 			},
 			data:     &testData{},
@@ -254,7 +249,7 @@ func TestFSMRun(t *testing.T) {
 			name:    "context already canceled",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s2)
+				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			data: &testData{},
 			ctx: func() context.Context {
@@ -269,7 +264,7 @@ func TestFSMRun(t *testing.T) {
 			name:    "context deadline exceeded",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s2)
+				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			data: &testData{},
 			ctx: func() context.Context {
@@ -371,14 +366,14 @@ func TestFSMHooks(t *testing.T) {
 			name:    "initial terminal observes nothing",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s1)
+				f.On(s1, okNext(s2)).Terminal(s1)
 			},
 		},
 		{
 			name:    "happy path observes single hop",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s2)
+				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			wantEnters: []fsm.State{s1},
 			wantExits:  [][2]fsm.State{{s1, s2}},
@@ -390,8 +385,8 @@ func TestFSMHooks(t *testing.T) {
 			name:    "happy path observes multiple hops",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
-					On(s2, okNext(s3), nil).
+				f.On(s1, okNext(s2)).
+					On(s2, okNext(s3)).
 					Terminal(s3)
 			},
 			wantEnters: []fsm.State{s1, s2},
@@ -404,12 +399,12 @@ func TestFSMHooks(t *testing.T) {
 			name:    "fallback observes enters but only successful transitions",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).
+				f.On(s1, okNext(s2)).
 					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
-					}, nil).
+					}).
 					OnFail(s2, s6).
-					On(s6, okNext(s7), nil).
+					On(s6, okNext(s7)).
 					Terminal(s7)
 			},
 			wantEnters: []fsm.State{s1, s2, s6},
@@ -419,19 +414,18 @@ func TestFSMHooks(t *testing.T) {
 			wantTo:     []fsm.State{s2, fsm.EmptyState, s7},
 		},
 		{
-			name:    "no transition observes enter only",
+			name:    "no transition fails validation before hooks",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s2, okNext(s3), nil).Terminal(s3)
+				f.On(s2, okNext(s3)).Terminal(s3)
 			},
-			wantErr:    fsm.ErrNoTransition,
-			wantEnters: []fsm.State{s1},
+			wantErr: fsm.ErrNoTransition,
 		},
 		{
 			name:    "canceled context observes nothing",
 			initial: s1,
 			build: func(f *fsm.FSM[testData]) {
-				f.On(s1, okNext(s2), nil).Terminal(s2)
+				f.On(s1, okNext(s2)).Terminal(s2)
 			},
 			ctx: func() context.Context {
 				ctx, cancel := context.WithCancel(context.Background())
@@ -531,7 +525,7 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "initial terminal fires nothing",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+				f.On(s1, okNext(s2), fsm.StateHooks[testData]{
 					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						record("state s1", hop)
 					},
@@ -542,7 +536,7 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "state hook fires on single hop after global",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+				f.On(s1, okNext(s2), fsm.StateHooks[testData]{
 					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						record("state s1", hop)
 					},
@@ -553,15 +547,35 @@ func TestFSMStateHooks(t *testing.T) {
 			wantTo:    []fsm.State{s2},
 		},
 		{
+			name:    "multiple state hooks all fire in order",
+			initial: s1,
+			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
+				f.On(s1, okNext(s2),
+					fsm.StateHooks[testData]{
+						OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
+							record("first", hop)
+						},
+					},
+					fsm.StateHooks[testData]{
+						OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
+							record("second", hop)
+						},
+					}).Terminal(s2)
+			},
+			wantOrder: []string{"global s1->s2", "first s1->s2", "second s1->s2"},
+			wantFrom:  []fsm.State{s1},
+			wantTo:    []fsm.State{s2},
+		},
+		{
 			name:    "only attached state hook fires on multiple hops",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+				f.On(s1, okNext(s2), fsm.StateHooks[testData]{
 					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						record("state s1", hop)
 					},
 				}).
-					On(s2, okNext(s3), nil).
+					On(s2, okNext(s3)).
 					Terminal(s3)
 			},
 			wantOrder: []string{"global s1->s2", "state s1 s1->s2", "global s2->s3"},
@@ -572,8 +586,8 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "nil and empty state hooks are safe",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], _ func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), nil).
-					On(s2, okNext(s3), &fsm.StateHooks[testData]{}).
+				f.On(s1, okNext(s2)).
+					On(s2, okNext(s3), fsm.StateHooks[testData]{}).
 					Terminal(s3)
 			},
 			wantOrder: []string{"global s1->s2", "global s2->s3"},
@@ -584,20 +598,20 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "failed state hook does not fire but fallback hook does",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+				f.On(s1, okNext(s2), fsm.StateHooks[testData]{
 					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						record("state s1", hop)
 					},
 				}).
 					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
-					}, &fsm.StateHooks[testData]{
+					}, fsm.StateHooks[testData]{
 						OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 							record("state s2", hop)
 						},
 					}).
 					OnFail(s2, s6).
-					On(s6, okNext(s7), &fsm.StateHooks[testData]{
+					On(s6, okNext(s7), fsm.StateHooks[testData]{
 						OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 							record("state s6", hop)
 						},
@@ -612,10 +626,10 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "error without fallback fires nothing for failed state",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), nil).
+				f.On(s1, okNext(s2)).
 					On(s2, func(context.Context, *testData) (fsm.State, error) {
 						return fsm.EmptyState, errBoom
-					}, &fsm.StateHooks[testData]{
+					}, fsm.StateHooks[testData]{
 						OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 							record("state s2", hop)
 						},
@@ -631,7 +645,7 @@ func TestFSMStateHooks(t *testing.T) {
 			name:    "canceled context fires nothing",
 			initial: s1,
 			build: func(f *fsm.FSM[testData], record func(string, fsm.Transition)) {
-				f.On(s1, okNext(s2), &fsm.StateHooks[testData]{
+				f.On(s1, okNext(s2), fsm.StateHooks[testData]{
 					OnTransition: func(_ context.Context, _ *testData, hop fsm.Transition) {
 						record("state s1", hop)
 					},
@@ -712,10 +726,17 @@ func TestFSMOptions(t *testing.T) {
 		{name: "default hops reaches terminal", wantTraceLen: 1},
 		{name: "custom max hops still reaches terminal", maxHops: 10, applyMaxHops: true, wantTraceLen: 1},
 		{
-			name:         "zero hops budget is exceeded",
+			name:         "zero hops budget is invalid",
 			maxHops:      0,
 			applyMaxHops: true,
-			wantErr:      fsm.ErrMaxHops,
+			wantErr:      fsm.ErrInvalidMaxHops,
+			wantTraceLen: 0,
+		},
+		{
+			name:         "negative hops budget is invalid",
+			maxHops:      -1,
+			applyMaxHops: true,
+			wantErr:      fsm.ErrInvalidMaxHops,
 			wantTraceLen: 0,
 		},
 		{
@@ -736,7 +757,7 @@ func TestFSMOptions(t *testing.T) {
 			}
 
 			f := fsm.New(s1, opts...)
-			f.On(s1, okNext(s2), nil).Terminal(s2)
+			f.On(s1, okNext(s2)).Terminal(s2)
 
 			trace, err := f.Run(t.Context(), &testData{})
 
@@ -763,14 +784,196 @@ func TestFSMBuilderChaining(t *testing.T) {
 
 	f := fsm.New[testData](s1, fsm.WithLogger[testData](discardLogger{}))
 
-	require.Same(t, f, f.On(s1, okNext(s2), nil))
+	require.Same(t, f, f.On(s1, okNext(s2)))
 	require.Same(t, f, f.OnFail(s1, s3))
 	require.Same(t, f, f.Terminal(s2, s3))
 
-	f.On(s3, okNext(s2), nil)
+	f.On(s3, okNext(s2))
 
 	trace, err := f.Run(t.Context(), &testData{})
 
+	require.NoError(t, err)
+	require.Len(t, trace, 1)
+}
+
+func TestFSMValidate(t *testing.T) {
+	t.Parallel()
+
+	const (
+		s1 fsm.State = "s1"
+		s2 fsm.State = "s2"
+		s3 fsm.State = "s3"
+	)
+
+	tests := []struct {
+		name     string
+		initial  fsm.State
+		build    func(f *fsm.FSM[testData])
+		opts     []fsm.Option[testData]
+		wantErrs []error
+	}{
+		{
+			name:    "valid machine",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).Terminal(s2)
+			},
+		},
+		{
+			name:    "initial terminal without handlers is valid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.Terminal(s1)
+			},
+		},
+		{
+			name:     "empty initial is invalid",
+			initial:  fsm.EmptyState,
+			build:    func(*fsm.FSM[testData]) {},
+			wantErrs: []error{fsm.ErrInvalidInitial},
+		},
+		{
+			name:    "initial without handler is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s2, okNext(s3)).Terminal(s3)
+			},
+			wantErrs: []error{fsm.ErrNoTransition},
+		},
+		{
+			name:    "missing terminal is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).On(s2, okNext(s1))
+			},
+			wantErrs: []error{fsm.ErrNoTerminal},
+		},
+		{
+			name:    "non-positive hops are invalid",
+			initial: s1,
+			opts:    []fsm.Option[testData]{fsm.WithMaxHops[testData](0)},
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrInvalidMaxHops},
+		},
+		{
+			name:    "nil handler is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, nil).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrNilHandler},
+		},
+		{
+			name:    "empty state name is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(fsm.EmptyState, okNext(s2)).On(s1, okNext(s2)).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrEmptyState},
+		},
+		{
+			name:    "empty terminal is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).Terminal(s2, fsm.EmptyState)
+			},
+			wantErrs: []error{fsm.ErrEmptyState},
+		},
+		{
+			name:    "self fallback is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).OnFail(s1, s1).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrInvalidFallback},
+		},
+		{
+			name:    "empty fallback is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).OnFail(s1, fsm.EmptyState).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrEmptyState},
+		},
+		{
+			name:    "fallback to target without handler is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).On(s2, okNext(s3)).OnFail(s2, s3).Terminal(s3)
+			},
+			wantErrs: []error{fsm.ErrNoTransition},
+		},
+		{
+			name:    "fallback from unknown source is invalid",
+			initial: s1,
+			build: func(f *fsm.FSM[testData]) {
+				f.On(s1, okNext(s2)).OnFail(s3, s2).Terminal(s2)
+			},
+			wantErrs: []error{fsm.ErrNoTransition},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			opts := []fsm.Option[testData]{fsm.WithLogger[testData](discardLogger{})}
+			opts = append(opts, tt.opts...)
+
+			f := fsm.New(tt.initial, opts...)
+			tt.build(f)
+
+			err := f.Validate()
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.ErrorIs(t, err, fsm.ErrInvalidFSM)
+				for _, want := range tt.wantErrs {
+					require.ErrorIs(t, err, want)
+				}
+			}
+
+			trace, runErr := f.Run(t.Context(), &testData{})
+			if len(tt.wantErrs) == 0 {
+				require.NoError(t, runErr)
+			} else {
+				require.Error(t, runErr)
+				require.ErrorIs(t, runErr, fsm.ErrInvalidFSM)
+				for _, want := range tt.wantErrs {
+					require.ErrorIs(t, runErr, want)
+				}
+				assert.Empty(t, trace)
+			}
+		})
+	}
+}
+
+func TestFSMRevalidatesAfterRegistration(t *testing.T) {
+	t.Parallel()
+
+	const (
+		s1 fsm.State = "s1"
+		s2 fsm.State = "s2"
+	)
+
+	f := fsm.New(s1, fsm.WithLogger[testData](discardLogger{}))
+	f.On(s1, okNext(s2))
+
+	require.ErrorIs(t, f.Validate(), fsm.ErrNoTerminal)
+
+	trace, err := f.Run(t.Context(), &testData{})
+	require.ErrorIs(t, err, fsm.ErrInvalidFSM)
+	require.ErrorIs(t, err, fsm.ErrNoTerminal)
+	assert.Empty(t, trace)
+
+	f.Terminal(s2)
+
+	require.NoError(t, f.Validate())
+
+	trace, err = f.Run(t.Context(), &testData{})
 	require.NoError(t, err)
 	require.Len(t, trace, 1)
 }

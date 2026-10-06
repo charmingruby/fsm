@@ -45,10 +45,10 @@ func main() {
 	f.
 		On(s1, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s2, nil
-		}, nil).
+		}).
 		On(s2, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s3, nil
-		}, &fsm.StateHooks[data]{
+		}, fsm.StateHooks[data]{
 			OnTransition: func(ctx context.Context, data *data, hop fsm.Transition) {
 				fmt.Printf("[s2 TRANSITION HOOK] %+v\n", data)
 				fmt.Printf("[s2 TRANSITION HOOK] %+v\n", hop)
@@ -57,17 +57,21 @@ func main() {
 		OnFail(s2, s6).
 		On(s3, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s4, nil
-		}, nil).
+		}).
 		On(s4, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s5, nil
-		}, nil).
+		}).
 		On(s5, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s7, nil
-		}, nil).
+		}).
 		On(s6, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s7, nil
-		}, nil).
+		}).
 		Terminal(s7)
+
+	if err := f.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	_, err := f.Run(context.TODO(), &data{})
 	if err != nil {

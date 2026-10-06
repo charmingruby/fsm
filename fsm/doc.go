@@ -16,23 +16,23 @@
 //			return b, nil
 //		}
 //		return fsm.EmptyState, errBoom
-//	}, nil).
+//	}).
 //		OnFail(a, fallback).
 //		On(fallback, func(ctx context.Context, d *Data) (fsm.State, error) {
 //			return end, nil
-//		}, nil).
+//		}).
 //		Terminal(end)
 //
 //	trace, err := f.Run(ctx, data)
 //
-// The initial state must have an On handler registered, unless it is
-// also a Terminal state (then Run returns an empty trace). Any visited
-// state without a handler, including a fallback target, fails with
-// ErrNoTransition.
+// Registration never panics: misconfiguration (empty state names, nil
+// handlers, unknown fallback states, self fallbacks, non-positive hop
+// budget, missing terminals) is reported by Validate as an error
+// matching ErrInvalidFSM joined with the specific causes.
 //
-// Fallback: when a handler fails and OnFail was declared for that state,
-// Run records the hop with FallbackUsed set and continues at the fallback
-// state. Without a fallback, Run wraps the handler error with ErrNoFallback.
-// Hooks (GlobalHooks, StateHooks) only observe successful transitions and
-// never affect the result.
+// Validate caches its result, so a machine can be validated once and
+// Run many times without revalidating. Any registration (On, OnFail,
+// Terminal) invalidates the cache, and Run validates lazily when no
+// cached result exists. A misconfigured machine makes Run return the
+// cached validation error with an empty trace.
 package fsm

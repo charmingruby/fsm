@@ -7,13 +7,17 @@ type Option[T any] func(*FSM[T])
 func WithMaxHops[T any](n int) Option[T] {
 	return func(f *FSM[T]) {
 		f.maxHops = n
+		f.invalidate()
 	}
 }
 
 // WithLogger sets the logger used for transitions and failures.
+// A nil logger is ignored and keeps the default noop logger.
 func WithLogger[T any](logger Logger) Option[T] {
 	return func(f *FSM[T]) {
-		f.logger = logger
+		if logger != nil {
+			f.logger = logger
+		}
 	}
 }
 

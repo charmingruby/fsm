@@ -29,28 +29,32 @@ func main() {
 	f.
 		On(s1, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s2, nil
-		}, nil).
+		}).
 		On(s2, func(ctx context.Context, data *data) (fsm.State, error) {
 			if data.failS2 {
 				return fsm.EmptyState, errors.New("s2 exploded")
 			}
 
 			return s3, nil
-		}, nil).
+		}).
 		OnFail(s2, s6).
 		On(s3, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s4, nil
-		}, nil).
+		}).
 		On(s4, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s5, nil
-		}, nil).
+		}).
 		On(s5, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s7, nil
-		}, nil).
+		}).
 		On(s6, func(ctx context.Context, data *data) (fsm.State, error) {
 			return s7, nil
-		}, nil).
+		}).
 		Terminal(s7)
+
+	if err := f.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	fmt.Println("Run on happy path")
 	_, err := f.Run(context.TODO(), &data{failS2: false})
