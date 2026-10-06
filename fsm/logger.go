@@ -4,9 +4,9 @@ import "fmt"
 
 type stdLogger struct{}
 
-// NewStdLogger reports FSM transitions and failures to stdout.
-// Pass it to WithLogger to opt into console output.
-// The FSM default logger discards everything.
+// NewStdLogger returns a Logger that writes FSM transitions and failures
+// to standard output. Pass it to WithLogger to opt into console output.
+// New uses a noop logger by default.
 func NewStdLogger() Logger {
 	return &stdLogger{}
 }
@@ -21,7 +21,7 @@ func (l *stdLogger) Errorf(format string, args ...any) {
 
 type noopLogger struct{}
 
-// NewNoopLogger discards all FSM log output.
+// NewNoopLogger returns a Logger that discards all FSM log output.
 // It is the default logger used by New.
 func NewNoopLogger() Logger {
 	return noopLogger{}

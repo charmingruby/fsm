@@ -7,18 +7,27 @@
 // with OnFail, mark end states with Terminal, then Run from an initial
 // state until a terminal, an error, or the hop limit:
 //
-//	f := fsm.New(a,
-//		fsm.WithMaxHops[Data](64),
-//		fsm.WithLogger[Data](fsm.NewStdLogger()),
+//	type Data struct{ OK bool }
+//
+//	const (
+//		stateA   State = "a"
+//		stateB   State = "b"
+//		fallback State = "fallback"
+//		end      State = "end"
 //	)
-//	f.On(a, func(ctx context.Context, d *Data) (fsm.State, error) {
+//
+//	f := New(stateA,
+//		WithMaxHops[Data](64),
+//		WithLogger[Data](NewStdLogger()),
+//	)
+//	f.On(stateA, func(ctx context.Context, d *Data) (State, error) {
 //		if d.OK {
-//			return b, nil
+//			return stateB, nil
 //		}
-//		return fsm.EmptyState, errBoom
+//		return EmptyState, errBoom
 //	}).
-//		OnFail(a, fallback).
-//		On(fallback, func(ctx context.Context, d *Data) (fsm.State, error) {
+//		OnFail(stateA, fallback).
+//		On(fallback, func(ctx context.Context, d *Data) (State, error) {
 //			return end, nil
 //		}).
 //		Terminal(end)
@@ -34,15 +43,12 @@
 // budget, missing terminals) is reported by Validate as an error
 // joining the specific causes.
 //
-// Premise: always Validate before Run. Finish all registration, call
-// Validate once, then share the machine and Run it as many times as
-// needed. Run never validates itself; calling Run without a prior
-// successful Validate has undefined behavior — preferably never Run
-// without Validate. Any further registration requires a new Validate
-// before the next Run.
+// Callers must finish all registration, call Validate, and only then
+// share the machine and call Run. Run does not call Validate itself.
+// Any further registration requires another Validate before the next Run.
 //
-// An FSM is safe for concurrent Run and Validate calls once constructed
-// and validated: after construction every operation is read-only.
+// An FSM is safe for concurrent Run and Validate calls once construction
+// is finished: after construction every operation is read-only.
 // Registration (On, OnFail, Terminal) and options must happen before
 // Validate and before the machine is shared; they are not safe to call
 // concurrently with Run or Validate. Per-Run data is owned by the caller

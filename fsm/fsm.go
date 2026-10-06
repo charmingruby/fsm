@@ -12,10 +12,10 @@ const (
 
 // FSM is a generic and type-safe finite state machine.
 //
-// An FSM is safe for concurrent Run and Validate calls once constructed.
-// Registration (On, OnFail, Terminal) and options must happen before the
-// machine is shared; they are not safe to call concurrently with Run or
-// Validate. Per-Run data (*T) is owned by the caller.
+// An FSM is safe for concurrent Run and Validate calls once construction
+// is finished. Registration (On, OnFail, Terminal) and options must happen
+// before the machine is shared; they are not safe to call concurrently
+// with Run or Validate. Per-Run data (*T) is owned by the caller.
 type FSM[T any] struct {
 	globalHooks GlobalHooks[T]
 	logger      Logger
@@ -27,6 +27,9 @@ type FSM[T any] struct {
 }
 
 // New creates an FSM starting at initial.
+//
+// By default the machine allows defaultMaxHops hops per Run and discards
+// log output. Use WithMaxHops, WithLogger, and WithGlobalHooks to override.
 func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	fsm := &FSM[T]{
 		logger:      NewNoopLogger(),
@@ -45,33 +48,36 @@ func New[T any](initial State, opts ...Option[T]) *FSM[T] {
 	return fsm
 }
 
-// On registers fn for state with optional per-state hooks and returns f for chaining.
+// On registers fn for s with optional per-state hooks and returns the FSM for chaining.
+//
 // Invalid registrations (empty name, nil handler) are reported by Validate, not here.
-// It must be called during construction, before Validate and before the
+// On must be called during construction, before Validate and before the
 // FSM is shared; it is not safe for concurrent use with Run or Validate.
-func (f *FSM[T]) On(stateName State, fn StateFunc[T], hooks ...StateHooks[T]) *FSM[T] {
-	f.states[stateName] = state[T]{
+func (f *FSM[T]) On(s State, fn StateFunc[T], hooks ...StateHooks[T]) *FSM[T] {
+	f.states[s] = state[T]{
 		handler: fn,
 		hooks:   hooks,
-		key:     stateName,
+		key:     s,
 	}
 
 	return f
 }
 
-// OnFail sets fallback for state when its StateFunc fails and returns f for chaining.
+// OnFail sets fallback for s when its StateFunc fails and returns the FSM for chaining.
+//
 // Invalid mappings (empty states, self fallback, unknown states) are reported by Validate.
-// It must be called during construction, before Validate and before the
+// OnFail must be called during construction, before Validate and before the
 // FSM is shared; it is not safe for concurrent use with Run or Validate.
-func (f *FSM[T]) OnFail(state State, fallback State) *FSM[T] {
-	f.fallbacks[state] = fallback
+func (f *FSM[T]) OnFail(s State, fallback State) *FSM[T] {
+	f.fallbacks[s] = fallback
 
 	return f
 }
 
-// Terminal marks states as terminal and returns f for chaining.
+// Terminal marks states as terminal and returns the FSM for chaining.
+//
 // An empty state name is reported by Validate.
-// It must be called during construction, before Validate and before the
+// Terminal must be called during construction, before Validate and before the
 // FSM is shared; it is not safe for concurrent use with Run or Validate.
 func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	for _, s := range states {
@@ -81,10 +87,11 @@ func (f *FSM[T]) Terminal(states ...State) *FSM[T] {
 	return f
 }
 
-// Run runs handlers from the initial state until a terminal, error, or hop limit. Hooks only observe.
-// Run must only be called after a successful Validate: it never validates
-// itself, so running without a prior successful Validate has undefined
-// behavior.
+// Run executes handlers from the initial state until a terminal state,
+// an error, or the hop limit, and returns the trace of completed hops.
+// Hooks only observe; they never affect the result.
+//
+// Run requires a prior successful Validate and does not call Validate itself.
 // Run is safe for concurrent use with other Run and Validate calls.
 func (f *FSM[T]) Run(ctx context.Context, data *T) ([]Transition, error) {
 	trace := make([]Transition, 0, 8)

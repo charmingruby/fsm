@@ -5,13 +5,13 @@ import (
 	"fmt"
 )
 
-// Validate checks the machine configuration without running it and must be
-// called once after construction is finished and before any Run.
-// A misconfigured machine returns an error joining the specific causes.
-// Any further registration requires a new Validate before the next Run.
+// Validate checks the machine configuration without running it.
+// Call Validate after registration finishes and before the first Run; call
+// it again after any further registration. A misconfigured machine returns
+// an error joining the specific causes, inspectable with errors.Is and errors.As.
 //
-// Validate performs no writes and is safe for concurrent use with other
-// Validate and Run calls.
+// Validate does not modify the machine and is safe for concurrent use with
+// other Validate and Run calls.
 func (f *FSM[T]) Validate() error {
 	return errors.Join(
 		f.validateConfig(),
